@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../logic/providers/settings_provider.dart';
+import '../../logic/providers/task_provider.dart'; // Обязательно добавляем для работы с данными
 import '../widgets/glass_container.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -9,6 +10,7 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
+    final taskProvider = context.watch<TaskProvider>(); // Подключаем провайдер задач
     final theme = Theme.of(context);
     final isDark = settings.isDarkMode;
 
@@ -131,25 +133,55 @@ class SettingsScreen extends StatelessWidget {
                   children: [
                     ListTile(
                       leading: Icon(Icons.file_download_outlined, color: isDark ? Colors.white : Colors.black87),
-                      title: Text('Экспорт статистики (PDF)', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: const Text('Генерация отчета...'), backgroundColor: theme.colorScheme.primary),
-                        );
+                      title: Text('Экспорт резервной копии (JSON)', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                      onTap: () async {
+                        final result = await taskProvider.exportData();
+                        if (result != null && context.mounted) {
+                          _showMessage(context, result, theme);
+                        }
                       },
                     ),
                     Divider(color: isDark ? Colors.white12 : Colors.black12, height: 1),
                     ListTile(
-                      leading: const Icon(Icons.delete_forever, color: Colors.redAccent),
-                      title: const Text('Очистить корзину', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                      onTap: () {},
+                      leading: Icon(Icons.file_upload_outlined, color: isDark ? Colors.white : Colors.black87),
+                      title: Text('Восстановить из файла', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                      onTap: () async {
+                        final result = await taskProvider.importData();
+                        if (result != null && context.mounted) {
+                          _showMessage(context, result, theme);
+                        }
+                      },
+                    ),
+                    Divider(color: isDark ? Colors.white12 : Colors.black12, height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.delete_sweep_outlined, color: Colors.orangeAccent),
+                      title: const Text('Очистить корзину', style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
+                      onTap: () {
+                        taskProvider.emptyTrash();
+                        _showMessage(context, 'Корзина успешно очищена', theme);
+                      },
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 24),
+
+              // === БЛОК 4: ОПАСНАЯ ЗОНА ===
+              _buildSectionTitle('ОПАСНАЯ ЗОНА', theme),
+              GlassContainer(
+                blur: settings.blurRadius,
+                opacity: isDark ? 0.05 : 0.2, // Делаем фон чуть более выделяющимся
+                padding: EdgeInsets.zero,
+                child: ListTile(
+                  leading: const Icon(Icons.priority_high_rounded, color: Colors.redAccent),
+                  title: const Text('Сбросить все данные', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                  subtitle: Text('Удалит все задачи, группы и настройки', style: TextStyle(color: Colors.redAccent, fontSize: 11)),
+                  onTap: () => _showResetDialog(context, settings, taskProvider, theme),
+                ),
+              ),
               const SizedBox(height: 32),
 
-              // === БЛОК 4: О ПРИЛОЖЕНИИ ===
+              // === БЛОК 5: О ПРИЛОЖЕНИИ ===
               Center(
                 child: Column(
                   children: [
@@ -163,6 +195,46 @@ class SettingsScreen extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // Вспомогательный метод для показа уведомлений (SnackBar)
+  void _showMessage(BuildContext context, String text, ThemeData theme) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(text), 
+        backgroundColor: theme.colorScheme.primary,
+        behavior: SnackBarBehavior.floating,
+      )
+    );
+  }
+
+  // Диалоговое окно для подтверждения сброса данных
+  void _showResetDialog(BuildContext context, SettingsProvider settings, TaskProvider taskProvider, ThemeData theme) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Полный сброс?'),
+        content: const Text('Это действие нельзя отменить. Все ваши задачи, группы и настройки будут удалены навсегда.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context), 
+            child: const Text('Отмена')
+          ),
+          TextButton(
+            onPressed: () async {
+              // Вызываем методы очистки, которые мы обсуждали
+              // Убедись, что добавила их в providers!
+              await taskProvider.fullReset();
+              await settings.resetToDefaults();
+              if (!context.mounted) return;
+              Navigator.pop(context); // Закрываем диалог
+              _showMessage(context, 'Все данные сброшены к дефолту', theme);
+            }, 
+            child: const Text('Удалить всё', style: TextStyle(color: Colors.red))
+          ),
+        ],
       ),
     );
   }

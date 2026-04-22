@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../data/local/database_helper.dart';
 import 'package:uuid/uuid.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 
 class TaskProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _tasks = [];
@@ -187,5 +189,59 @@ int getCompletedCountForDate(DateTime date) {
     final db = await DatabaseHelper.instance.database;
     await db.insert('tags', {'id': const Uuid().v4(), 'name': name, 'color_hex': colorHex});
     await refreshData();
+  }
+
+
+  Future<void> fullReset() async {
+  await DatabaseHelper.instance.clearDatabase();
+  await refreshData(); // Очищаем список в памяти
+}
+
+// --- ЭКСПОРТ ДАННЫХ В ФАЙЛ ---
+  Future<String?> exportData() async {
+    try {
+      final jsonString = await DatabaseHelper.instance.exportToJson();
+      
+      // Открываем диалог сохранения файла
+      String? outputFile = await FilePicker.platform.saveFile(
+        dialogTitle: 'Сохранить резервную копию',
+        fileName: 'novastep_backup.json',
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (outputFile != null) {
+        final file = File(outputFile);
+        await file.writeAsString(jsonString);
+        return 'Данные успешно экспортированы!';
+      }
+      return null; // Если пользователь закрыл окно
+    } catch (e) {
+      return 'Ошибка экспорта: $e';
+    }
+  }
+
+  // --- ИМПОРТ ДАННЫХ ИЗ ФАЙЛА ---
+  Future<String?> importData() async {
+    try {
+      // Открываем диалог выбора файла
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Выберите файл резервной копии',
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final file = File(result.files.single.path!);
+        final jsonString = await file.readAsString();
+        
+        await DatabaseHelper.instance.importFromJson(jsonString);
+        await refreshData(); // Обновляем экран
+        return 'Данные успешно восстановлены!';
+      }
+      return null; // Если пользователь закрыл окно
+    } catch (e) {
+      return 'Ошибка импорта: неверный формат файла';
+    }
   }
 }

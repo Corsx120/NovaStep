@@ -81,4 +81,10 @@ class SettingsProvider extends ChangeNotifier {
     await prefs.setBool('isReminderEnabled', value);
     notifyListeners();
   }
+
+  Future<void> resetToDefaults() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.clear(); // Полностью стираем все ключи
+  await _loadSettings(); // Загружаем дефолтные значения заново
+}
 }

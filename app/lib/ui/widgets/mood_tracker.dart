@@ -19,7 +19,6 @@ class _MoodTrackerWidgetState extends State<MoodTrackerWidget> {
 
   final List<String> _moods = ['🤩', '🙂', '😐', '😞', '😭'];
   
-  // Вернули твои оригинальные фразы
   final List<String> _readiness = [
     'Полностью готов!',
     'Потихоньку начну',
@@ -45,10 +44,15 @@ class _MoodTrackerWidgetState extends State<MoodTrackerWidget> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Как настроение?',
-                style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.bold),
+              // 1. Обернули текст в Expanded для защиты от overflow
+              Expanded(
+                child: Text(
+                  'Как настроение?',
+                  style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis, // Добавит многоточие при нехватке места
+                ),
               ),
+              const SizedBox(width: 8),
               InkWell(
                 onTap: widget.onClose,
                 child: Icon(Icons.close, color: textColor.withValues(alpha: 0.5), size: 18),
@@ -57,14 +61,15 @@ class _MoodTrackerWidgetState extends State<MoodTrackerWidget> {
           ),
           const SizedBox(height: 8), 
           
-          // Смайлики теперь прижаты друг к другу в центре экрана
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(_moods.length, (index) {
-              final isSelected = _selectedMood == index;
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4.0), // Маленькое расстояние между смайликами
-                child: GestureDetector(
+          // 2. Заменили Row на Wrap, чтобы смайлики были адаптивными
+          Center(
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 4.0, // Расстояние между смайликами по горизонтали
+              runSpacing: 4.0, // Расстояние по вертикали (если перенесутся на новую строку)
+              children: List.generate(_moods.length, (index) {
+                final isSelected = _selectedMood == index;
+                return GestureDetector(
                   onTap: () => setState(() => _selectedMood = index),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
@@ -81,19 +86,18 @@ class _MoodTrackerWidgetState extends State<MoodTrackerWidget> {
                     ),
                     child: Text(_moods[index], style: const TextStyle(fontSize: 32)), 
                   ),
-                ),
-              );
-            }),
+                );
+              }),
+            ),
           ),
           
           const SizedBox(height: 10),
           Text('Настрой:', style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 13)),
           const SizedBox(height: 4),
           
-          // Теги плотнее прилегают друг к другу
           Wrap(
-            spacing: 4.0, // Минимальное расстояние по горизонтали
-            runSpacing: 4.0, // Минимальное расстояние по вертикали
+            spacing: 4.0,
+            runSpacing: 4.0,
             children: List.generate(_readiness.length, (index) {
               final isSelected = _selectedReadiness == index;
               return ChoiceChip(

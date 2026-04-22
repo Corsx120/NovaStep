@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import 'dart:convert';
 
 class DatabaseHelper {
   // Реализуем паттерн Singleton, как требуется в ТЗ
@@ -88,5 +89,57 @@ class DatabaseHelper {
   Future close() async {
     final db = await instance.database;
     db.close();
+  }
+
+  Future<void> clearDatabase() async {
+  final db = await database;
+  await db.transaction((txn) async {
+    await txn.delete('tasks');
+    await txn.delete('groups');
+    await txn.delete('tags');
+    await txn.delete('task_tags');
+    await txn.delete('mood_logs');
+  });
+}
+
+// --- ЭКСПОРТ В JSON ---
+  Future<String> exportToJson() async {
+    final db = await database;
+    // Собираем все данные из всех таблиц
+    final data = {
+      'groups': await db.query('groups'),
+      'tasks': await db.query('tasks'),
+      'tags': await db.query('tags'),
+      'task_tags': await db.query('task_tags'),
+      'mood_logs': await db.query('mood_logs'),
+    };
+    // Превращаем в строку JSON
+    return jsonEncode(data);
+  }
+
+  // --- ИМПОРТ ИЗ JSON ---
+  Future<void> importFromJson(String jsonString) async {
+    final db = await database;
+    final data = jsonDecode(jsonString) as Map<String, dynamic>;
+
+    // Используем транзакцию: если что-то пойдет не так, база не сломается
+    await db.transaction((txn) async {
+      // Сначала очищаем текущую базу
+      await txn.delete('tasks');
+      await txn.delete('groups');
+      await txn.delete('tags');
+      await txn.delete('task_tags');
+      await txn.delete('mood_logs');
+
+      // Затем заливаем новые данные
+      final tables = ['groups', 'tasks', 'tags', 'task_tags', 'mood_logs'];
+      for (var table in tables) {
+        if (data[table] != null) {
+          for (var item in data[table]) {
+            await txn.insert(table, item);
+          }
+        }
+      }
+    });
   }
 }
