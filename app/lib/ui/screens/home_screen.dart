@@ -33,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
         title: _isSearching
             ? TextField(
                 controller: _searchController,
-                autofocus: true, // Клавиатура откроется автоматически
+                autofocus: true,
                 style: TextStyle(color: textColor, fontSize: 18),
                 decoration: InputDecoration(
                   hintText: 'Поиск задач...',
@@ -43,13 +43,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 onChanged: (value) => taskProvider.setSearchQuery(value),
               )
             : const Text('NovaStep'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         actions: [
           IconButton(
             icon: Icon(_isSearching ? Icons.close : Icons.search),
             onPressed: () {
               setState(() {
                 _isSearching = !_isSearching;
-                // Если мы закрываем поиск, нужно очистить поле и сбросить фильтр
                 if (!_isSearching) {
                   _searchController.clear();
                   taskProvider.setSearchQuery('');
@@ -57,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
               });
             },
           ),
-          if (!_isSearching) // Скрываем иконку сетки, когда открыт поиск
+          if (!_isSearching)
             IconButton(icon: const Icon(Icons.grid_view), onPressed: () {}),
         ],
       ),
