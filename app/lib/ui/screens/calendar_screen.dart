@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../logic/providers/task_provider.dart';
+import '../../logic/providers/settings_provider.dart';
 import '../widgets/glass_container.dart';
 
 class CalendarScreen extends StatefulWidget {
@@ -11,31 +14,50 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   int _selectedPeriodIndex = 0; // 0 - Неделя, 1 - Месяц, 2 - Год
 
+  // Для расшифровки логов настроения из БД
+  final List<String> _moods = ['🤩', '🙂', '😐', '😞', '😭'];
+  final List<String> _readiness = [
+    'Полностью готов!',
+    'Потихоньку начну',
+    'Не уверен',
+    'Не хочу ничего...',
+  ];
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final taskProvider = context.watch<TaskProvider>();
+    final settings = context.watch<SettingsProvider>();
+    
+    // Поддержка темной и светлой темы
+    final isDark = settings.isDarkMode;
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+
+    // Считаем выполненные задачи за последние 7 дней для заголовка
+    int totalCompletedThisWeek = 0;
+    for (int i = 0; i < 7; i++) {
+      totalCompletedThisWeek += taskProvider.getCompletedCountForDate(DateTime.now().subtract(Duration(days: i)));
+    }
 
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Статистика'),
+        title: Text('Статистика', style: TextStyle(color: textColor)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          icon: Icon(Icons.arrow_back_ios, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
       ),
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF0F172A),
-              Color(0xFF2E1065),
-              Color(0xFF0F172A),
-            ],
+            colors: isDark 
+              ? [const Color(0xFF0F172A), const Color(0xFF2E1065), const Color(0xFF0F172A)]
+              : [const Color(0xFFE2E8F0), const Color(0xFFF1F5F9), const Color(0xFFE2E8F0)],
           ),
         ),
         child: SafeArea(
@@ -44,49 +66,59 @@ class _CalendarScreenState extends State<CalendarScreen> {
             children: [
               // === ПЕРЕКЛЮЧАТЕЛЬ ПЕРИОДА ===
               GlassContainer(
+                blur: settings.blurRadius,
                 padding: const EdgeInsets.all(4.0),
                 borderRadius: BorderRadius.circular(24),
                 child: Row(
                   children: [
-                    _buildPeriodButton('Неделя', 0),
-                    _buildPeriodButton('Месяц', 1),
-                    _buildPeriodButton('Год', 2),
+                    _buildPeriodButton('Неделя', 0, theme, textColor, isDark),
+                    _buildPeriodButton('Месяц', 1, theme, textColor, isDark),
+                    _buildPeriodButton('Год', 2, theme, textColor, isDark),
                   ],
                 ),
               ),
               const SizedBox(height: 24),
 
               // === ГРАФИК ПРОДУКТИВНОСТИ ===
-              const Text(
+              Text(
                 'ПРОДУКТИВНОСТЬ',
-                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                style: TextStyle(color: textColor.withValues(alpha: 0.7), fontWeight: FontWeight.bold, letterSpacing: 1.2),
               ),
               const SizedBox(height: 12),
               GlassContainer(
+                blur: settings.blurRadius,
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Выполнено задач', style: TextStyle(color: Colors.white, fontSize: 16)),
-                        Text('14', style: TextStyle(color: theme.colorScheme.primary, fontSize: 24, fontWeight: FontWeight.bold)),
+                        Text('Задач за неделю', style: TextStyle(color: textColor, fontSize: 16)),
+                        Text('$totalCompletedThisWeek', style: TextStyle(color: theme.colorScheme.primary, fontSize: 24, fontWeight: FontWeight.bold)),
                       ],
                     ),
                     const SizedBox(height: 24),
-                    // Имитация столбчатого графика
+                    // Динамический график за 7 дней
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        _buildChartBar(0.4, 'Пн'),
-                        _buildChartBar(0.7, 'Вт'),
-                        _buildChartBar(1.0, 'Ср', isToday: true), // Пик продуктивности!
-                        _buildChartBar(0.3, 'Чт'),
-                        _buildChartBar(0.8, 'Пт'),
-                        _buildChartBar(0.2, 'Сб'),
-                        _buildChartBar(0.1, 'Вс'),
-                      ],
+                      children: List.generate(7, (index) {
+                        // Идем с конца (6 дней назад -> сегодня)
+                        final date = DateTime.now().subtract(Duration(days: 6 - index));
+                        final count = taskProvider.getCompletedCountForDate(date);
+                        
+                        // Высчитываем высоту: если 0 задач - показываем минимум (0.05), если 10+ - максимум (1.0)
+                        double factor = count == 0 ? 0.05 : (count / 10).clamp(0.1, 1.0); 
+                        final labels = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+                        
+                        return _buildChartBar(
+                          factor, 
+                          labels[date.weekday - 1], 
+                          isToday: index == 6, 
+                          theme: theme, 
+                          textColor: textColor
+                        );
+                      }),
                     ),
                   ],
                 ),
@@ -94,22 +126,46 @@ class _CalendarScreenState extends State<CalendarScreen> {
               const SizedBox(height: 32),
 
               // === ДНЕВНИК НАСТРОЕНИЯ ===
-              const Text(
+              Text(
                 'ИСТОРИЯ НАСТРОЕНИЯ',
-                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                style: TextStyle(color: textColor.withValues(alpha: 0.7), fontWeight: FontWeight.bold, letterSpacing: 1.2),
               ),
               const SizedBox(height: 12),
               GlassContainer(
+                blur: settings.blurRadius,
                 padding: const EdgeInsets.symmetric(vertical: 16.0),
-                child: Column(
-                  children: [
-                    _buildMoodRow('Сегодня', 'Готов свернуть горы', '🤩'),
-                    const Divider(color: Colors.white24, indent: 16, endIndent: 16),
-                    _buildMoodRow('Вчера', 'Немного устал, но держусь', '🫠'),
-                    const Divider(color: Colors.white24, indent: 16, endIndent: 16),
-                    _buildMoodRow('Позавчера', 'Спокойный рабочий настрой', '🙂'),
-                  ],
-                ),
+                child: taskProvider.moodLogs.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Center(
+                        child: Text(
+                          'Записей пока нет',
+                          style: TextStyle(color: textColor.withValues(alpha: 0.5)),
+                        ),
+                      ),
+                    )
+                  : Column(
+                      children: taskProvider.moodLogs.map((log) {
+                        // Форматируем дату и проверяем, сегодня ли это
+                        final dateStr = log['log_date'] as String;
+                        final isToday = dateStr == DateTime.now().toIso8601String().split('T')[0];
+                        final displayDate = isToday ? 'Сегодня' : dateStr;
+                        
+                        // Достаем индексы и подставляем эмодзи с текстом
+                        final moodIndex = log['mood_score'] as int;
+                        final readinessIndex = log['readiness_score'] as int;
+                        final emoji = (moodIndex >= 0 && moodIndex < _moods.length) ? _moods[moodIndex] : '❓';
+                        final desc = (readinessIndex >= 0 && readinessIndex < _readiness.length) ? _readiness[readinessIndex] : '...';
+
+                        return Column(
+                          children: [
+                            _buildMoodRow(displayDate, desc, emoji, textColor),
+                            if (log != taskProvider.moodLogs.last)
+                              Divider(color: textColor.withValues(alpha: 0.1), indent: 16, endIndent: 16),
+                          ],
+                        );
+                      }).toList(),
+                    ),
               ),
             ],
           ),
@@ -118,10 +174,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // --- Вспомогательные методы для чистоты кода ---
+  // --- Вспомогательные методы с поддержкой динамических цветов ---
 
-  // Кнопка переключения периода (Неделя/Месяц/Год)
-  Widget _buildPeriodButton(String title, int index) {
+  Widget _buildPeriodButton(String title, int index, ThemeData theme, Color textColor, bool isDark) {
     final isSelected = _selectedPeriodIndex == index;
     return Expanded(
       child: GestureDetector(
@@ -130,14 +185,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
           duration: const Duration(milliseconds: 250),
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.4) : Colors.transparent,
+            color: isSelected ? theme.colorScheme.primary.withValues(alpha: isDark ? 0.4 : 0.8) : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Center(
             child: Text(
               title,
               style: TextStyle(
-                color: isSelected ? Colors.white : Colors.white60,
+                color: isSelected ? Colors.white : textColor.withValues(alpha: 0.6),
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
             ),
@@ -147,12 +202,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // Столбик графика
-  Widget _buildChartBar(double heightFactor, String label, {bool isToday = false}) {
+  Widget _buildChartBar(double heightFactor, String label, {bool isToday = false, required ThemeData theme, required Color textColor}) {
     return Column(
       children: [
         Container(
-          height: 120, // Максимальная высота графика
+          height: 120, 
           width: 30,
           alignment: Alignment.bottomCenter,
           child: LayoutBuilder(
@@ -163,8 +217,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 height: constraints.maxHeight * heightFactor,
                 decoration: BoxDecoration(
                   color: isToday 
-                      ? Theme.of(context).colorScheme.secondary 
-                      : Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                      ? theme.colorScheme.secondary 
+                      : theme.colorScheme.primary.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(6),
                 ),
               );
@@ -175,7 +229,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         Text(
           label,
           style: TextStyle(
-            color: isToday ? Theme.of(context).colorScheme.secondary : Colors.white54,
+            color: isToday ? theme.colorScheme.secondary : textColor.withValues(alpha: 0.54),
             fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
           ),
         ),
@@ -183,8 +237,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // Строка с записью настроения
-  Widget _buildMoodRow(String date, String description, String emoji) {
+  Widget _buildMoodRow(String date, String description, String emoji, Color textColor) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Row(
@@ -195,9 +248,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(date, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                Text(date, style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                Text(description, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                Text(description, style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 13)),
               ],
             ),
           ),

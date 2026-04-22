@@ -9,6 +9,8 @@ class TaskProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _taskTags = [];
   String _selectedGroupId = 'all'; 
   String _searchQuery = '';
+  List<Map<String, dynamic>> _moodLogs = [];
+  List<Map<String, dynamic>> get moodLogs => _moodLogs;
 
   List<Map<String, dynamic>> get tasks {
     List<Map<String, dynamic>> filteredList = [];
@@ -34,6 +36,38 @@ class TaskProvider extends ChangeNotifier {
     return filteredList;
   }
 
+  // 1. Сохранение настроения
+Future<void> addMoodLog(int moodScore, int readinessScore) async {
+  final db = await DatabaseHelper.instance.database;
+  await db.insert('mood_logs', {
+    'id': const Uuid().v4(),
+    'log_date': DateTime.now().toIso8601String().split('T')[0], // Сохраняем только дату
+    'mood_score': moodScore,
+    'readiness_score': readinessScore,
+  });
+  await refreshData();
+}
+
+// 2. Обнови метод refreshData, чтобы он подгружал логи настроения
+Future<void> refreshData() async {
+  final db = await DatabaseHelper.instance.database;
+  _tasks = await db.query('tasks', orderBy: 'is_pinned DESC, created_at DESC');
+  _groups = await db.query('groups');
+  _tags = await db.query('tags');
+  _taskTags = await db.query('task_tags');
+  _moodLogs = await db.query('mood_logs', orderBy: 'log_date DESC'); // Загружаем настроение
+  notifyListeners();
+}
+
+// 3. Метод для получения количества выполненных задач за конкретный день
+int getCompletedCountForDate(DateTime date) {
+  final dateStr = date.toIso8601String().split('T')[0];
+  return _tasks.where((t) => 
+    t['is_completed'] == 1 && 
+    t['created_at'].toString().startsWith(dateStr)
+  ).length;
+}
+
   List<Map<String, dynamic>> get deletedTasks => _tasks.where((t) => t['is_deleted'] == 1).toList();
   List<Map<String, dynamic>> get groups => _groups;
   List<Map<String, dynamic>> get tags => _tags;
@@ -41,15 +75,6 @@ class TaskProvider extends ChangeNotifier {
 
   TaskProvider() {
     refreshData();
-  }
-
-  Future<void> refreshData() async {
-    final db = await DatabaseHelper.instance.database;
-    _tasks = await db.query('tasks', orderBy: 'is_pinned DESC, created_at DESC');
-    _groups = await db.query('groups');
-    _tags = await db.query('tags');
-    _taskTags = await db.query('task_tags');
-    notifyListeners();
   }
 
   void selectGroup(String id) {

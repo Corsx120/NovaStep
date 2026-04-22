@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:task_manager/logic/providers/task_provider.dart';
 import '../../logic/providers/settings_provider.dart';
 import 'glass_container.dart';
 
@@ -113,7 +114,18 @@ class _MoodTrackerWidgetState extends State<MoodTrackerWidget> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                         onPressed: () {
-                          widget.onClose();
+                          if (_selectedMood != null && _selectedReadiness != null) {
+                            // Вызываем метод провайдера
+                            context.read<TaskProvider>().addMoodLog(
+                              _selectedMood!, 
+                              _selectedReadiness!
+                            );
+                            // Показываем подтверждение
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Настроение записано! 📝'))
+                            );
+                            widget.onClose();
+                          }
                         },
                         child: const Text('Сохранить в дневник', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
