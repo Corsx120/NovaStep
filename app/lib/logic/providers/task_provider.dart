@@ -5,19 +5,20 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 
 class TaskProvider extends ChangeNotifier {
+  // === ПЕРЕМЕННЫЕ СОСТОЯНИЯ ===
   List<Map<String, dynamic>> _tasks = [];
   List<Map<String, dynamic>> _groups = [];
   List<Map<String, dynamic>> _tags = [];
   List<Map<String, dynamic>> _taskTags = [];
+  List<Map<String, dynamic>> _moodLogs = [];
+
   String _selectedGroupId = 'all'; 
   String _searchQuery = '';
-  List<Map<String, dynamic>> _moodLogs = [];
-  List<Map<String, dynamic>> get moodLogs => _moodLogs;
 
+  // === ГЕТТЕРЫ ===
   List<Map<String, dynamic>> get tasks {
     List<Map<String, dynamic>> filteredList = [];
 
-    // Сначала фильтруем по выбранной группе
     if (_selectedGroupId == 'all') {
       filteredList = _tasks.where((t) => t['is_completed'] == 0 && t['is_deleted'] == 0).toList();
     } else if (_selectedGroupId == 'completed') {
@@ -26,7 +27,6 @@ class TaskProvider extends ChangeNotifier {
       filteredList = _tasks.where((t) => t['group_id'] == _selectedGroupId && t['is_completed'] == 0 && t['is_deleted'] == 0).toList();
     }
 
-    // Затем фильтруем результат по поисковому запросу (если он не пустой)
     if (_searchQuery.isNotEmpty) {
       filteredList = filteredList.where((t) {
         final title = (t['title'] as String).toLowerCase();
@@ -38,45 +38,24 @@ class TaskProvider extends ChangeNotifier {
     return filteredList;
   }
 
-  // 1. Сохранение настроения
-Future<void> addMoodLog(int moodScore, int readinessScore) async {
-  final db = await DatabaseHelper.instance.database;
-  await db.insert('mood_logs', {
-    'id': const Uuid().v4(),
-    'log_date': DateTime.now().toIso8601String().split('T')[0], // Сохраняем только дату
-    'mood_score': moodScore,
-    'readiness_score': readinessScore,
-  });
-  await refreshData();
-}
-
-// 2. Обнови метод refreshData, чтобы он подгружал логи настроения
-Future<void> refreshData() async {
-  final db = await DatabaseHelper.instance.database;
-  _tasks = await db.query('tasks', orderBy: 'is_pinned DESC, created_at DESC');
-  _groups = await db.query('groups');
-  _tags = await db.query('tags');
-  _taskTags = await db.query('task_tags');
-  _moodLogs = await db.query('mood_logs', orderBy: 'log_date DESC'); // Загружаем настроение
-  notifyListeners();
-}
-
-// 3. Метод для получения количества выполненных задач за конкретный день
-int getCompletedCountForDate(DateTime date) {
-  final dateStr = date.toIso8601String().split('T')[0];
-  return _tasks.where((t) => 
-    t['is_completed'] == 1 && 
-    t['created_at'].toString().startsWith(dateStr)
-  ).length;
-}
-
   List<Map<String, dynamic>> get deletedTasks => _tasks.where((t) => t['is_deleted'] == 1).toList();
   List<Map<String, dynamic>> get groups => _groups;
   List<Map<String, dynamic>> get tags => _tags;
+  List<Map<String, dynamic>> get moodLogs => _moodLogs;
   String get selectedGroupId => _selectedGroupId;
 
   TaskProvider() {
     refreshData();
+  }
+
+  Future<void> refreshData() async {
+    final db = await DatabaseHelper.instance.database;
+    _tasks = await db.query('tasks', orderBy: 'is_pinned DESC, created_at DESC');
+    _groups = await db.query('groups');
+    _tags = await db.query('tags');
+    _taskTags = await db.query('task_tags');
+    _moodLogs = await db.query('mood_logs', orderBy: 'log_date DESC');
+    notifyListeners();
   }
 
   void selectGroup(String id) {
@@ -89,13 +68,68 @@ int getCompletedCountForDate(DateTime date) {
     notifyListeners();
   }
 
-  // Получить теги для конкретной задачи
+  // === ЛОГИКА КАЛЕНДАРЯ И НАСТРОЕНИЯ ===
+  Future<void> addMoodLog(int moodScore, int readinessScore) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.insert('mood_logs', {
+      'id': const Uuid().v4(),
+      'log_date': DateTime.now().toIso8601String().split('T')[0],
+      'mood_score': moodScore,
+      'readiness_score': readinessScore,
+    });
+    await refreshData();
+  }
+
+  // Подсчет выполненных задач за любой период (идеально для JSON)
+  int getCompletedCountBetween(DateTime start, DateTime end) {
+    return _tasks.where((t) {
+      if (t['is_completed'] != 1) return false;
+      try {
+        final date = DateTime.parse(t['created_at']);
+        return date.isAfter(start.subtract(const Duration(seconds: 1))) && 
+               date.isBefore(end.add(const Duration(seconds: 1)));
+      } catch (e) {
+        return false;
+      }
+    }).length;
+  }
+
+  // Подсчет выполненных задач за конкретный день (нужно для умного помощника)
+  int getCompletedCountForDate(DateTime date) {
+    final start = DateTime(date.year, date.month, date.day);
+    final end = DateTime(date.year, date.month, date.day, 23, 59, 59);
+    return getCompletedCountBetween(start, end);
+  }
+
+  // Расчет среднего настроения за период
+  double getMoodAverageBetween(DateTime start, DateTime end) {
+    final logs = _moodLogs.where((m) {
+      try {
+        final date = DateTime.parse(m['log_date']);
+        return date.isAfter(start.subtract(const Duration(days: 1))) && 
+               date.isBefore(end.add(const Duration(days: 1)));
+      } catch (e) {
+        return false;
+      }
+    }).toList();
+
+    if (logs.isEmpty) return 0.0;
+    
+    double sum = 0;
+    for (var log in logs) {
+      // 0 = 🤩, 4 = 😭. Переводим в шкалу от 0.0 до 1.0, где 1.0 - лучшее
+      int score = log['mood_score'] as int;
+      sum += (4 - score) / 4.0; 
+    }
+    return sum / logs.length;
+  }
+
+  // === ЛОГИКА ЗАДАЧ И ГРУПП ===
   List<Map<String, dynamic>> getTagsForTask(String taskId) {
     final tagIds = _taskTags.where((tt) => tt['task_id'] == taskId).map((tt) => tt['tag_id']).toList();
     return _tags.where((t) => tagIds.contains(t['id'])).toList();
   }
 
-  // --- ЛОГИКА ЗАДАЧ (обновлена с тегами) ---
   Future<void> addTask(String title, String content, String? groupId, List<String> tagIds) async {
     final db = await DatabaseHelper.instance.database;
     final taskId = const Uuid().v4();
@@ -110,7 +144,6 @@ int getCompletedCountForDate(DateTime date) {
       'group_id': groupId,
     });
     
-    // Привязываем теги
     for (var tagId in tagIds) {
       await db.insert('task_tags', {'task_id': taskId, 'tag_id': tagId});
     }
@@ -125,7 +158,6 @@ int getCompletedCountForDate(DateTime date) {
       'group_id': groupId,
     }, where: 'id = ?', whereArgs: [id]);
     
-    // Обновляем теги: удаляем старые и записываем новые
     await db.delete('task_tags', where: 'task_id = ?', whereArgs: [id]);
     for (var tagId in tagIds) {
       await db.insert('task_tags', {'task_id': id, 'tag_id': tagId});
@@ -169,7 +201,6 @@ int getCompletedCountForDate(DateTime date) {
     await refreshData();
   }
 
-  // --- ЛОГИКА ГРУПП ---
   Future<void> addGroup(String name) async {
     final db = await DatabaseHelper.instance.database;
     await db.insert('groups', {'id': const Uuid().v4(), 'name': name, 'color_hex': '#8B5CF6'});
@@ -184,25 +215,21 @@ int getCompletedCountForDate(DateTime date) {
     await refreshData();
   }
 
-  // --- ЛОГИКА ТЕГОВ ---
   Future<void> addTag(String name, String colorHex) async {
     final db = await DatabaseHelper.instance.database;
     await db.insert('tags', {'id': const Uuid().v4(), 'name': name, 'color_hex': colorHex});
     await refreshData();
   }
 
-
   Future<void> fullReset() async {
-  await DatabaseHelper.instance.clearDatabase();
-  await refreshData(); // Очищаем список в памяти
-}
+    await DatabaseHelper.instance.clearDatabase();
+    await refreshData(); 
+  }
 
-// --- ЭКСПОРТ ДАННЫХ В ФАЙЛ ---
   Future<String?> exportData() async {
     try {
       final jsonString = await DatabaseHelper.instance.exportToJson();
       
-      // Открываем диалог сохранения файла
       String? outputFile = await FilePicker.platform.saveFile(
         dialogTitle: 'Сохранить резервную копию',
         fileName: 'novastep_backup.json',
@@ -215,16 +242,14 @@ int getCompletedCountForDate(DateTime date) {
         await file.writeAsString(jsonString);
         return 'Данные успешно экспортированы!';
       }
-      return null; // Если пользователь закрыл окно
+      return null; 
     } catch (e) {
       return 'Ошибка экспорта: $e';
     }
   }
 
-  // --- ИМПОРТ ДАННЫХ ИЗ ФАЙЛА ---
   Future<String?> importData() async {
     try {
-      // Открываем диалог выбора файла
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         dialogTitle: 'Выберите файл резервной копии',
         type: FileType.custom,
@@ -236,10 +261,10 @@ int getCompletedCountForDate(DateTime date) {
         final jsonString = await file.readAsString();
         
         await DatabaseHelper.instance.importFromJson(jsonString);
-        await refreshData(); // Обновляем экран
+        await refreshData(); 
         return 'Данные успешно восстановлены!';
       }
-      return null; // Если пользователь закрыл окно
+      return null; 
     } catch (e) {
       return 'Ошибка импорта: неверный формат файла';
     }

@@ -44,7 +44,6 @@ class _MoodTrackerWidgetState extends State<MoodTrackerWidget> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // 1. Обернули текст в Expanded для защиты от overflow
               Expanded(
                 child: Text(
                   'Как настроение?',
@@ -60,8 +59,6 @@ class _MoodTrackerWidgetState extends State<MoodTrackerWidget> {
             ],
           ),
           const SizedBox(height: 8), 
-          
-          // 2. Заменили Row на Wrap, чтобы смайлики были адаптивными
           Center(
             child: Wrap(
               alignment: WrapAlignment.center,

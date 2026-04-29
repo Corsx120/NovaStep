@@ -6,6 +6,7 @@ import '../widgets/glass_container.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/mood_tracker.dart';
 import 'note_editor_screen.dart';
+import '../../logic/services/praise_manager.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,7 +18,15 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   bool _showMoodTracker = true;
   bool _isSearching = false;
+  bool _summaryShown = false; // Чтобы итог не всплывал постоянно
   final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Проверяем итоги дня сразу после отрисовки кадра
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkEveningSummary());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,8 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
               });
             },
           ),
-          if (!_isSearching)
-            IconButton(icon: const Icon(Icons.grid_view), onPressed: () {}),
+          // Кнопка сетки успешно удалена
         ],
       ),
       body: Container(
@@ -139,76 +147,87 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildGlassChip(BuildContext context, String label, String id, TaskProvider provider, SettingsProvider settings) {
-  final isSelected = provider.selectedGroupId == id;
-  final isDark = settings.isDarkMode;
-  
-  return Padding(
-    padding: const EdgeInsets.all(6.0),
-    child: GestureDetector(
-      onTap: () => provider.selectGroup(id),
-      onLongPress: () {
-        if (id != 'all' && id != 'completed') {
-          _showDeleteGroupDialog(context, provider, label, id);
-        }
-      },
-      child: GlassContainer(
-        blur: settings.blurRadius,
-        opacity: isSelected ? 0.3 : 0.1,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Center(
-          child: Text(
-            label, 
-            style: TextStyle(
-              color: isSelected ? const Color(0xFF8B5CF6) : (isDark ? Colors.white : const Color(0xFF0F172A)),
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal
+    final isSelected = provider.selectedGroupId == id;
+    final isDark = settings.isDarkMode;
+    
+    return Padding(
+      padding: const EdgeInsets.all(6.0),
+      child: GestureDetector(
+        onTap: () => provider.selectGroup(id),
+        onLongPress: () {
+          if (id != 'all' && id != 'completed') {
+            _showDeleteGroupDialog(context, provider, label, id);
+          }
+        },
+        child: GlassContainer(
+          blur: settings.blurRadius,
+          opacity: isSelected ? 0.3 : 0.1,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Center(
+            child: Text(
+              label, 
+              style: TextStyle(
+                color: isSelected ? const Color(0xFF8B5CF6) : (isDark ? Colors.white : const Color(0xFF0F172A)),
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal
+              ),
             ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
-void _showDeleteGroupDialog(BuildContext context, TaskProvider provider, String name, String id) {
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text('Удалить группу "$name"?'),
-      content: const Text('Задачи останутся, но потеряют привязку к этой группе.'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
-        TextButton(
-          onPressed: () {
-            provider.deleteGroup(id);
-            Navigator.pop(context);
-          }, 
-          child: const Text('Удалить', style: TextStyle(color: Colors.red))
-        ),
-      ],
-    ),
-  );
-}
+  void _showDeleteGroupDialog(BuildContext context, TaskProvider provider, String name, String id) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Удалить группу "$name"?'),
+        content: const Text('Задачи останутся, но потеряют привязку к этой группе.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
+          TextButton(
+            onPressed: () {
+              provider.deleteGroup(id);
+              Navigator.pop(context);
+            }, 
+            child: const Text('Удалить', style: TextStyle(color: Colors.red))
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildTaskCard(BuildContext context, Map<String, dynamic> task, TaskProvider provider, SettingsProvider settings) {
     final isDark = settings.isDarkMode;
     final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final isPinned = task['is_pinned'] == 1;
-    final taskTags = provider.getTagsForTask(task['id']); // Достаем теги для этой задачи
+    final taskTags = provider.getTagsForTask(task['id']); 
     
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: GlassContainer(
         blur: settings.blurRadius,
         child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           leading: Checkbox(
-            value: task['is_completed'] == 1,
-            activeColor: const Color(0xFF8B5CF6),
-            onChanged: (_) => provider.toggleComplete(task['id'], task['is_completed']),
-          ),
+              value: task['is_completed'] == 1,
+              activeColor: const Color(0xFF8B5CF6),
+              onChanged: (_) {
+                if (task['is_completed'] == 0) {
+                  if (settings.isPraiseEnabled) {
+                    final count = provider.getCompletedCountForDate(DateTime.now()) + 1;
+                    _showPraise(context, count);
+                }}
+                provider.toggleComplete(task['id'], task['is_completed']);
+              },
+            ),
           title: Text(
             task['title'], 
+            maxLines: 2, // Ограничение в 2 строки
+            overflow: TextOverflow.ellipsis, // Добавляем троеточие
             style: TextStyle(
               color: textColor, 
+              fontSize: 15,
               fontWeight: FontWeight.bold,
               decoration: task['is_completed'] == 1 ? TextDecoration.lineThrough : null,
             )
@@ -216,14 +235,18 @@ void _showDeleteGroupDialog(BuildContext context, TaskProvider provider, String 
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(task['content'], maxLines: 1, style: const TextStyle(color: Colors.grey)),
-              // Выводим теги, если они есть
+              Text(
+                task['content'], 
+                maxLines: 1, // Ограничение в 1 строку для описания
+                overflow: TextOverflow.ellipsis, // Троеточие при сжатии
+                style: const TextStyle(color: Colors.grey, fontSize: 13)
+              ),
               if (taskTags.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 6.0),
                   child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
+                    spacing: 4,
+                    runSpacing: 4,
                     children: taskTags.map((tag) {
                       final tagColor = Color(int.parse(tag['color_hex'].replaceFirst('#', '0xFF')));
                       return Container(
@@ -243,26 +266,32 @@ void _showDeleteGroupDialog(BuildContext context, TaskProvider provider, String 
                 ),
             ],
           ),
-          trailing: Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min, // Занимаем ровно столько места, сколько нужно
             children: [
               IconButton(
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints(),
                 icon: Icon(
                   isPinned ? Icons.push_pin : Icons.push_pin_outlined, 
                   color: isPinned ? Colors.orangeAccent : textColor.withValues(alpha: 0.3),
-                  size: 20,
+                  size: 18,
                 ),
                 onPressed: () => provider.togglePin(task['id'], task['is_pinned']),
               ),
               IconButton(
-                icon: const Icon(Icons.edit_note, color: Color(0xFF8B5CF6)), 
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints(),
+                icon: const Icon(Icons.edit_note, color: Color(0xFF8B5CF6), size: 20), 
                 onPressed: () => Navigator.push(
                   context, 
                   MaterialPageRoute(builder: (_) => NoteEditorScreen(task: task))
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 22), 
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints(),
+                icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20), 
                 onPressed: () => provider.moveToTrash(task['id']),
               ),
             ],
@@ -328,6 +357,51 @@ void _showDeleteGroupDialog(BuildContext context, TaskProvider provider, String 
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showPraise(BuildContext context, int count) {
+    // Если число выполненных задач кратно 5 - советуем отдохнуть
+    final message = (count > 0 && count % 5 == 0) 
+        ? PraiseManager.getBreakMessage(count) 
+        : PraiseManager.getRandomPraise();
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar(); 
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF8B5CF6).withValues(alpha: 0.9),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: (count > 0 && count % 5 == 0) ? 5 : 2), // Перерыв читается дольше
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+void _checkEveningSummary() {
+    final now = DateTime.now();
+    // Если сейчас после 21:00 и итог еще не показывали
+    if (now.hour >= 21 && !_summaryShown) {
+      final provider = context.read<TaskProvider>();
+      final count = provider.getCompletedCountForDate(now); // Используем метод из провайдера
+      
+      _showSummaryDialog(count);
+      setState(() => _summaryShown = true);
+    }
+  }
+
+  void _showSummaryDialog(int count) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Итоги дня ✨"),
+        content: Text(PraiseManager.getEveningSummary(count)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Принято!"))
+        ],
       ),
     );
   }

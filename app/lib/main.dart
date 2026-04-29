@@ -3,14 +3,25 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:window_manager/window_manager.dart'; // Импортируем новый пакет
+import 'package:window_manager/window_manager.dart'; 
 
 import 'ui/screens/home_screen.dart';
+import 'ui/screens/pin_lock_screen.dart'; // Подключили экран блокировки
 import 'logic/providers/settings_provider.dart';
 import 'logic/providers/task_provider.dart';
+import 'logic/services/notification_service.dart'; // Подключили сервис уведомлений
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Инициализация локальных уведомлений (Только для Android)
+  if (Platform.isAndroid) {
+    try {
+      await NotificationService.init();
+    } catch (e) {
+      debugPrint('Ошибка инициализации уведомлений: $e');
+    }
+  }
 
   // Инициализация базы данных и размеров окна для ПК
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -87,7 +98,8 @@ class TaskManagerApp extends StatelessWidget {
           titleTextStyle: TextStyle(color: Color(0xFF0F172A), fontSize: 22, fontWeight: FontWeight.bold),
         ),
       ),
-      home: const HomeScreen(),
+      // Обернули главный экран в экран блокировки
+      home: const PinLockScreen(child: HomeScreen()),
     );
   }
 }

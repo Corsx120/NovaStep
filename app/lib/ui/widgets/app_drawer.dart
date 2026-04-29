@@ -14,7 +14,6 @@ class AppDrawer extends StatelessWidget {
     final theme = Theme.of(context);
     final settings = context.watch<SettingsProvider>();
     final isDark = settings.isDarkMode;
-    // Исправлено: теперь в светлой теме используется глубокий синий
     final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
 
     return Drawer(
@@ -123,7 +122,7 @@ class AppDrawer extends StatelessWidget {
     );
   }
 
-  // --- СТЕКЛЯННЫЙ ДИАЛОГ СМЕНЫ ИМЕНИ ---
+  // --- ДИАЛОГ СМЕНЫ ИМЕНИ ---
   void _showNameDialog(BuildContext context, SettingsProvider settings) {
     final controller = TextEditingController(text: settings.userName);
     final isDark = settings.isDarkMode;

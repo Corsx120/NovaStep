@@ -7,20 +7,24 @@ class SettingsProvider extends ChangeNotifier {
   double _blurRadius = 15.0;
   String _userName = 'Пользователь';
   
-  // Новые состояния, которых не хватало:
-  double _fontSize = 16.0;
+  // Состояния для уведомлений и похвалы:
   bool _isPraiseEnabled = true;
-  bool _isReminderEnabled = true;
+  bool _isReminderEnabled = true; 
+
+  // Состояния для ПИН-кода:
+  bool _isPinEnabled = false;
+  String _pinCode = '1234';
 
   // === 2. Геттеры для UI ===
   bool get isDarkMode => _isDarkMode;
   double get blurRadius => _blurRadius;
   String get userName => _userName;
   
-  // Новые геттеры:
-  double get fontSize => _fontSize;
   bool get isPraiseEnabled => _isPraiseEnabled;
   bool get isReminderEnabled => _isReminderEnabled;
+  
+  bool get isPinEnabled => _isPinEnabled;
+  String get pinCode => _pinCode;
 
   SettingsProvider() {
     _loadSettings();
@@ -32,9 +36,12 @@ class SettingsProvider extends ChangeNotifier {
     _isDarkMode = prefs.getBool('isDarkMode') ?? true;
     _blurRadius = prefs.getDouble('blurRadius') ?? 15.0;
     _userName = prefs.getString('userName') ?? 'Пользователь';
-    _fontSize = prefs.getDouble('fontSize') ?? 16.0;
     _isPraiseEnabled = prefs.getBool('isPraiseEnabled') ?? true;
     _isReminderEnabled = prefs.getBool('isReminderEnabled') ?? true;
+    
+    _isPinEnabled = prefs.getBool('isPinEnabled') ?? false;
+    _pinCode = prefs.getString('pinCode') ?? '1234';
+    
     notifyListeners();
   }
 
@@ -60,14 +67,6 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Новые методы:
-  Future<void> updateFontSize(double value) async {
-    _fontSize = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('fontSize', value);
-    notifyListeners();
-  }
-
   Future<void> togglePraise(bool value) async {
     _isPraiseEnabled = value;
     final prefs = await SharedPreferences.getInstance();
@@ -82,9 +81,23 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> togglePin(bool value) async {
+    _isPinEnabled = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isPinEnabled', value);
+    notifyListeners();
+  }
+
+  Future<void> updatePinCode(String code) async {
+    _pinCode = code;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('pinCode', code);
+    notifyListeners();
+  }
+
   Future<void> resetToDefaults() async {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.clear(); // Полностью стираем все ключи
-  await _loadSettings(); // Загружаем дефолтные значения заново
-}
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear(); 
+    await _loadSettings(); 
+  }
 }

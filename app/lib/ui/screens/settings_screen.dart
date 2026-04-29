@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../logic/providers/settings_provider.dart';
-import '../../logic/providers/task_provider.dart'; // Обязательно добавляем для работы с данными
+import '../../logic/providers/task_provider.dart';
 import '../widgets/glass_container.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -10,17 +10,18 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
-    final taskProvider = context.watch<TaskProvider>(); // Подключаем провайдер задач
+    final taskProvider = context.watch<TaskProvider>(); 
     final theme = Theme.of(context);
     final isDark = settings.isDarkMode;
+    final textColor = isDark ? Colors.white : Colors.black87;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Text('Настройки', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+        title: Text('Настройки', style: TextStyle(color: textColor)),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black87),
+        iconTheme: IconThemeData(color: textColor),
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -45,7 +46,7 @@ class SettingsScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SwitchListTile(
-                      title: Text('Темная тема', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                      title: Text('Темная тема', style: TextStyle(color: textColor)),
                       value: settings.isDarkMode,
                       activeThumbColor: theme.colorScheme.secondary,
                       onChanged: (value) => settings.toggleTheme(value),
@@ -54,7 +55,7 @@ class SettingsScreen extends StatelessWidget {
                     
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                      child: Text('Сила размытия стекла', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                      child: Text('Сила размытия стекла', style: TextStyle(color: textColor)),
                     ),
                     Slider(
                       value: settings.blurRadius,
@@ -64,40 +65,39 @@ class SettingsScreen extends StatelessWidget {
                       inactiveColor: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.2),
                       onChanged: (value) => settings.updateBlur(value),
                     ),
-                    Divider(color: isDark ? Colors.white12 : Colors.black12, indent: 16, endIndent: 16),
-                    
-                    Padding(
-                      padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 8.0),
-                      child: Text('Базовый размер шрифта', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 8.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Пример текста', style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: settings.fontSize)),
-                          Row(
-                            children: [
-                              IconButton(
-                                icon: Icon(Icons.remove_circle_outline, color: isDark ? Colors.white : Colors.black87),
-                                onPressed: () => settings.updateFontSize((settings.fontSize - 1).clamp(12.0, 24.0)),
-                              ),
-                              Text('${settings.fontSize.toInt()}', style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold)),
-                              IconButton(
-                                icon: Icon(Icons.add_circle_outline, color: isDark ? Colors.white : Colors.black87),
-                                onPressed: () => settings.updateFontSize((settings.fontSize + 1).clamp(12.0, 24.0)),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 24),
 
-              // === БЛОК 2: УМНЫЙ ПОМОЩНИК ===
+              // === БЛОК 2: БЕЗОПАСНОСТЬ ===
+              _buildSectionTitle('БЕЗОПАСНОСТЬ', theme),
+              GlassContainer(
+                blur: settings.blurRadius,
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Column(
+                  children: [
+                    SwitchListTile(
+                      title: Text('ПИН-код при входе', style: TextStyle(color: textColor)),
+                      subtitle: Text('Запрашивать пароль при запуске', style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12)),
+                      value: settings.isPinEnabled,
+                      activeThumbColor: theme.colorScheme.secondary,
+                      onChanged: (value) => settings.togglePin(value),
+                    ),
+                    if (settings.isPinEnabled) ...[
+                      Divider(color: isDark ? Colors.white12 : Colors.black12, indent: 16, endIndent: 16),
+                      ListTile(
+                        title: Text('Изменить ПИН-код', style: TextStyle(color: textColor)),
+                        trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                        onTap: () => _showChangePinDialog(context, settings, theme),
+                      ),
+                    ]
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // === БЛОК 3: УМНЫЙ ПОМОЩНИК И УВЕДОМЛЕНИЯ ===
               _buildSectionTitle('УМНЫЙ ПОМОЩНИК', theme),
               GlassContainer(
                 blur: settings.blurRadius,
@@ -105,26 +105,31 @@ class SettingsScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     SwitchListTile(
-                      title: Text('Хвалить за успехи', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
-                      subtitle: Text('Получать мотивирующие фразы', style: TextStyle(color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.6), fontSize: 12)),
+                      title: Text('Хвалить за успехи', style: TextStyle(color: textColor)),
+                      subtitle: Text('Получать мотивирующие фразы', style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12)),
                       value: settings.isPraiseEnabled,
                       activeThumbColor: theme.colorScheme.secondary,
                       onChanged: (value) => settings.togglePraise(value),
                     ),
                     Divider(color: isDark ? Colors.white12 : Colors.black12, indent: 16, endIndent: 16),
                     SwitchListTile(
-                      title: Text('Мягкие напоминания', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
-                      subtitle: Text('Напоминать о забытых задачах', style: TextStyle(color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.6), fontSize: 12)),
+                      title: Text('Ежедневные уведомления', style: TextStyle(color: textColor)),
+                      subtitle: Text('Напоминать зайти в приложение вечером', style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12)),
                       value: settings.isReminderEnabled,
                       activeThumbColor: theme.colorScheme.secondary,
-                      onChanged: (value) => settings.toggleReminder(value),
+                      onChanged: (value) {
+                        settings.toggleReminder(value);
+                        if (value) {
+                          _showMessage(context, 'Уведомления включены', theme);
+                        }
+                      },
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 24),
 
-              // === БЛОК 3: ДАННЫЕ ===
+              // === БЛОК 4: ДАННЫЕ ===
               _buildSectionTitle('ДАННЫЕ', theme),
               GlassContainer(
                 blur: settings.blurRadius,
@@ -132,8 +137,8 @@ class SettingsScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     ListTile(
-                      leading: Icon(Icons.file_download_outlined, color: isDark ? Colors.white : Colors.black87),
-                      title: Text('Экспорт резервной копии (JSON)', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                      leading: Icon(Icons.file_download_outlined, color: textColor),
+                      title: Text('Экспорт резервной копии (JSON)', style: TextStyle(color: textColor)),
                       onTap: () async {
                         final result = await taskProvider.exportData();
                         if (result != null && context.mounted) {
@@ -143,8 +148,8 @@ class SettingsScreen extends StatelessWidget {
                     ),
                     Divider(color: isDark ? Colors.white12 : Colors.black12, height: 1),
                     ListTile(
-                      leading: Icon(Icons.file_upload_outlined, color: isDark ? Colors.white : Colors.black87),
-                      title: Text('Восстановить из файла', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                      leading: Icon(Icons.file_upload_outlined, color: textColor),
+                      title: Text('Восстановить из файла', style: TextStyle(color: textColor)),
                       onTap: () async {
                         final result = await taskProvider.importData();
                         if (result != null && context.mounted) {
@@ -166,11 +171,11 @@ class SettingsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
 
-              // === БЛОК 4: ОПАСНАЯ ЗОНА ===
+              // === БЛОК 5: ОПАСНАЯ ЗОНА ===
               _buildSectionTitle('ОПАСНАЯ ЗОНА', theme),
               GlassContainer(
                 blur: settings.blurRadius,
-                opacity: isDark ? 0.05 : 0.2, // Делаем фон чуть более выделяющимся
+                opacity: isDark ? 0.05 : 0.2,
                 padding: EdgeInsets.zero,
                 child: ListTile(
                   leading: const Icon(Icons.priority_high_rounded, color: Colors.redAccent),
@@ -181,13 +186,13 @@ class SettingsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 32),
 
-              // === БЛОК 5: О ПРИЛОЖЕНИИ ===
+              // === БЛОК 6: О ПРИЛОЖЕНИИ ===
               Center(
                 child: Column(
                   children: [
-                    Text('NovaStep v1.0.0', style: TextStyle(color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.5), fontWeight: FontWeight.bold)),
+                    Text('NovaStep v1.0.0', style: TextStyle(color: textColor.withValues(alpha: 0.5), fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
-                    Text('Разработано главным архитектором', style: TextStyle(color: theme.colorScheme.secondary, fontSize: 12)),
+                    Text('Разработано Корсом', style: TextStyle(color: theme.colorScheme.secondary, fontSize: 12)),
                   ],
                 ),
               ),
@@ -199,14 +204,63 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  // Вспомогательный метод для показа уведомлений (SnackBar)
+  // Вспомогательный метод для показа уведомлений
   void _showMessage(BuildContext context, String text, ThemeData theme) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(text), 
+        content: Text(text, style: const TextStyle(color: Colors.white)), 
         backgroundColor: theme.colorScheme.primary,
         behavior: SnackBarBehavior.floating,
       )
+    );
+  }
+
+  // Диалог для смены ПИН-кода
+  void _showChangePinDialog(BuildContext context, SettingsProvider settings, ThemeData theme) {
+    final controller = TextEditingController();
+    final isDark = settings.isDarkMode;
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: theme.colorScheme.surface,
+        title: Text('Новый ПИН-код', style: TextStyle(color: textColor)),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          maxLength: 4,
+          obscureText: true,
+          style: TextStyle(color: textColor, letterSpacing: 16, fontSize: 24, fontWeight: FontWeight.bold),
+          textAlign: TextAlign.center,
+          decoration: InputDecoration(
+            hintText: '0000',
+            hintStyle: TextStyle(color: textColor.withValues(alpha: 0.3)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context), 
+            child: Text('Отмена', style: TextStyle(color: textColor.withValues(alpha: 0.6)))
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.colorScheme.primary,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              if (controller.text.length == 4) {
+                settings.updatePinCode(controller.text);
+                Navigator.pop(context);
+                _showMessage(context, 'ПИН-код успешно изменен!', theme);
+              } else {
+                _showMessage(context, 'ПИН-код должен состоять из 4 цифр', theme);
+              }
+            },
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -224,12 +278,10 @@ class SettingsScreen extends StatelessWidget {
           ),
           TextButton(
             onPressed: () async {
-              // Вызываем методы очистки, которые мы обсуждали
-              // Убедись, что добавила их в providers!
               await taskProvider.fullReset();
               await settings.resetToDefaults();
               if (!context.mounted) return;
-              Navigator.pop(context); // Закрываем диалог
+              Navigator.pop(context);
               _showMessage(context, 'Все данные сброшены к дефолту', theme);
             }, 
             child: const Text('Удалить всё', style: TextStyle(color: Colors.red))
