@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/notification_service.dart';
 
 class SettingsProvider extends ChangeNotifier {
   // === 1. Все состояния ===
@@ -38,6 +39,11 @@ class SettingsProvider extends ChangeNotifier {
     _userName = prefs.getString('userName') ?? 'Пользователь';
     _isPraiseEnabled = prefs.getBool('isPraiseEnabled') ?? true;
     _isReminderEnabled = prefs.getBool('isReminderEnabled') ?? true;
+
+    // Если уведомления включены, обновляем расписание при запуске
+    if (_isReminderEnabled) {
+      NotificationService.scheduleDailyReminder();
+    }
     
     _isPinEnabled = prefs.getBool('isPinEnabled') ?? false;
     _pinCode = prefs.getString('pinCode') ?? '1234';
@@ -78,6 +84,13 @@ class SettingsProvider extends ChangeNotifier {
     _isReminderEnabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isReminderEnabled', value);
+
+    if (value) {
+      await NotificationService.scheduleDailyReminder();
+    } else {
+      await NotificationService.cancelAll();
+    }
+    
     notifyListeners();
   }
 
