@@ -146,10 +146,12 @@ class AppDrawer extends StatelessWidget {
                   TextField(
                     controller: controller, 
                     style: TextStyle(color: textColor),
+                    maxLength: 20,
                     decoration: InputDecoration(
                       hintText: "Введи имя",
                       hintStyle: TextStyle(color: textColor.withValues(alpha: 0.4)),
                       enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: textColor.withValues(alpha: 0.3))),
+                      counterText: '',
                     ),
                     textCapitalization: TextCapitalization.words,
                   ),
@@ -168,8 +170,9 @@ class AppDrawer extends StatelessWidget {
                           foregroundColor: Colors.white,
                         ),
                         onPressed: () {
-                          if (controller.text.trim().isNotEmpty) {
-                            settings.updateUserName(controller.text.trim());
+                          final text = controller.text.trim();
+                          if (text.isNotEmpty) {
+                            settings.updateUserName(text);
                           }
                           Navigator.pop(context);
                         },

@@ -7,6 +7,7 @@ import '../widgets/app_drawer.dart';
 import '../widgets/mood_tracker.dart';
 import 'note_editor_screen.dart';
 import '../../logic/services/praise_manager.dart';
+import '../widgets/mouse_scroll_wrapper.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,6 +21,13 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isSearching = false;
   bool _summaryShown = false; // Чтобы итог не всплывал постоянно
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _groupsScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _groupsScrollController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -94,7 +102,10 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(
                 child: SizedBox(
                   height: 60,
+                  child: MouseHorizontalScroll(
+                  controller: _groupsScrollController,
                   child: ListView(
+                    controller: _groupsScrollController,
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     children: [
@@ -115,6 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+            ),
 
               SliverPadding(
                 padding: const EdgeInsets.only(top: 12),
@@ -135,7 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
-            ],
+          ],
           ),
         ),
       ),
@@ -154,10 +166,11 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.all(6.0),
       child: GestureDetector(
         onTap: () => provider.selectGroup(id),
-        onLongPress: () {
-          if (id != 'all' && id != 'completed') {
-            _showDeleteGroupDialog(context, provider, label, id);
-          }
+        onLongPress: () { // Для Android (удержание пальцем)
+          if (id != 'all' && id != 'completed') _showDeleteGroupDialog(context, provider, label, id);
+        },
+        onSecondaryTap: () { // Для Windows (правый клик)
+          if (id != 'all' && id != 'completed') _showDeleteGroupDialog(context, provider, label, id);
         },
         child: GlassContainer(
           blur: settings.blurRadius,
@@ -324,10 +337,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   TextField(
                     controller: controller, 
                     style: TextStyle(color: textColor),
+                    maxLength: 20,
                     decoration: InputDecoration(
                       hintText: 'Название...',
                       hintStyle: TextStyle(color: textColor.withValues(alpha: 0.4)),
                       enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: textColor.withValues(alpha: 0.3))),
+                      counterText: '',
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -345,8 +360,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           foregroundColor: Colors.white,
                         ),
                         onPressed: () {
-                          if (controller.text.isNotEmpty) provider.addGroup(controller.text);
-                          Navigator.pop(context);
+                          final text = controller.text.trim();
+                            if (text.isNotEmpty) {
+                              provider.addGroup(text);
+                              Navigator.pop(context);
+                            }
                         },
                         child: const Text('Создать'),
                       ),
@@ -362,10 +380,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showPraise(BuildContext context, int count) {
-    // Если число выполненных задач кратно 5 - советуем отдохнуть
+    // Получаем текущее имя пользователя
+    final userName = context.read<SettingsProvider>().userName;
+
+    // Передаем имя в методы PraiseManager
     final message = (count > 0 && count % 5 == 0) 
-        ? PraiseManager.getBreakMessage(count) 
-        : PraiseManager.getRandomPraise();
+        ? PraiseManager.getBreakMessage(count, userName) 
+        : PraiseManager.getRandomPraise(userName);
 
     ScaffoldMessenger.of(context).hideCurrentSnackBar(); 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -373,7 +394,7 @@ class _HomeScreenState extends State<HomeScreen> {
         content: Text(message, style: const TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF8B5CF6).withValues(alpha: 0.9),
         behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: (count > 0 && count % 5 == 0) ? 5 : 2), // Перерыв читается дольше
+        duration: Duration(seconds: (count > 0 && count % 5 == 0) ? 5 : 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
       ),
@@ -393,12 +414,16 @@ void _checkEveningSummary() {
   }
 
   void _showSummaryDialog(int count) {
+    // Получаем текущее имя пользователя
+    final userName = context.read<SettingsProvider>().userName;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Итоги дня ✨"),
-        content: Text(PraiseManager.getEveningSummary(count)),
+        // Передаем имя в итоги дня
+        content: Text(PraiseManager.getEveningSummary(count, userName)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Принято!"))
         ],

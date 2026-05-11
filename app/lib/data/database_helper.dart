@@ -4,7 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
 
 class DatabaseHelper {
-  // Реализуем паттерн Singleton, как требуется в ТЗ
+  // паттерн Singleton, как требуется в ТЗ
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
 
@@ -19,8 +19,6 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getApplicationDocumentsDirectory();
     final path = join(dbPath.path, filePath);
-
-    // Увеличиваем версию БД, если будем менять структуру
     return await openDatabase(path, version: 1, onCreate: _createDB);
   }
 

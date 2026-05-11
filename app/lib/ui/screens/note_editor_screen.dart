@@ -5,6 +5,9 @@ import 'package:url_launcher/url_launcher.dart'; // для открытия на
 import '../../logic/providers/task_provider.dart';
 import '../../logic/providers/settings_provider.dart';
 import '../widgets/glass_container.dart';
+import 'dart:io' show Platform;
+import '../widgets/mouse_scroll_wrapper.dart';
+
 
 class NoteEditorScreen extends StatefulWidget {
   final Map<String, dynamic>? task;
@@ -26,6 +29,9 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
 
   late stt.SpeechToText _speech;
   bool _isListening = false;
+
+  final ScrollController _groupsScrollController = ScrollController();
+  final ScrollController _tagsScrollController = ScrollController();
 
   @override
   void initState() {
@@ -49,6 +55,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
 
   @override
   void dispose() {
+    _groupsScrollController.dispose();
     _titleFocus.dispose();
     _contentFocus.dispose();
     _titleController.dispose();
@@ -115,7 +122,9 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
         backgroundColor: theme.colorScheme.surface,
         title: Text('Ошибка микрофона 🎙️', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
         content: Text(
-          'Приложению не удалось получить доступ к микрофону.\n\nУбедитесь, что в настройках Windows включен "Доступ к микрофону для классических приложений".',
+          Platform.isWindows 
+            ? 'Приложению не удалось получить доступ к микрофону.\n\nУбедитесь, что в настройках Windows включен "Доступ к микрофону для классических приложений".'
+            : 'Приложению не удалось получить доступ к микрофону. Убедитесь, что вы выдали необходимые разрешения в настройках устройства.',
           style: TextStyle(color: textColor.withValues(alpha: 0.8)),
         ),
         actions: [
@@ -123,21 +132,19 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
             onPressed: () => Navigator.pop(context),
             child: Text('Отмена', style: TextStyle(color: textColor.withValues(alpha: 0.6))),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.colorScheme.primary,
-              foregroundColor: Colors.white,
+          if (Platform.isWindows) // Кнопка только для ПК!
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                Navigator.pop(context);
+                final Uri url = Uri.parse('ms-settings:privacy-microphone');
+                if (await canLaunchUrl(url)) await launchUrl(url);
+              },
+              child: const Text('Открыть настройки'),
             ),
-            onPressed: () async {
-              Navigator.pop(context);
-              // ссылка для открытия настроек приватности микрофона в Windows
-              final Uri url = Uri.parse('ms-settings:privacy-microphone');
-              if (await canLaunchUrl(url)) {
-                await launchUrl(url);
-              }
-            },
-            child: const Text('Открыть настройки'),
-          ),
         ],
       ),
     );
@@ -161,17 +168,22 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
           IconButton(
             icon: Icon(Icons.check, color: theme.colorScheme.primary, size: 28),
             onPressed: () {
-              if (_titleController.text.isNotEmpty) {
-                if (widget.task == null) {
-                  taskProvider.addTask(_titleController.text, _contentController.text, _selectedGroupId, _selectedTagIds);
-                } else {
-                  taskProvider.updateTask(widget.task!['id'], _titleController.text, _contentController.text, _selectedGroupId, _selectedTagIds);
-                }
-                Navigator.pop(context);
+            final titleText = _titleController.text.trim();
+            final contentText = _contentController.text.trim();
+
+            if (titleText.isNotEmpty) {
+              if (widget.task == null) {
+                taskProvider.addTask(titleText, contentText, _selectedGroupId, _selectedTagIds);
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Добавьте заголовок')));
+                taskProvider.updateTask(widget.task!['id'], titleText, contentText, _selectedGroupId, _selectedTagIds);
               }
-            },
+              Navigator.pop(context);
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Добавьте нормальный заголовок'))
+              );
+            }
+          },
           ),
         ],
       ),
@@ -223,14 +235,16 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                       TextField(
                         controller: _titleController,
                         focusNode: _titleFocus,
+                        maxLength: 50,
                         style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
-                        decoration: const InputDecoration(hintText: 'Заголовок...', border: InputBorder.none),
+                        decoration: const InputDecoration(hintText: 'Заголовок...', border: InputBorder.none, counterText: '',),
                       ),
                       const Divider(),
                       TextField(
                         controller: _contentController,
                         focusNode: _contentFocus,
                         maxLines: null,
+                        maxLength: 1000,
                         style: TextStyle(fontSize: 16, color: textColor.withValues(alpha: 0.8)),
                         decoration: const InputDecoration(hintText: 'Описание...', border: InputBorder.none),
                       ),
@@ -258,10 +272,14 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                     const SizedBox(height: 8),
                     SizedBox(
                       height: 40,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 15),
-                        children: taskProvider.tags.map((t) => _buildTagChip(t, textColor)).toList(),
+                      child: MouseHorizontalScroll(
+                        controller: _tagsScrollController,
+                        child: ListView(
+                          controller: _tagsScrollController, // Передаем контроллер
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 15),
+                          children: taskProvider.tags.map((t) => _buildTagChip(t, textColor)).toList(),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -271,13 +289,17 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                     ),
                     SizedBox(
                       height: 40,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 15),
-                        children: [
-                          _buildGroupOption('Без группы', null, textColor),
-                          ...taskProvider.groups.map((g) => _buildGroupOption(g['name'], g['id'], textColor)),
-                        ],
+                      child: MouseHorizontalScroll(
+                        controller: _groupsScrollController,
+                        child: ListView(
+                          controller: _groupsScrollController, // Передаем контроллер
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 15),
+                          children: [
+                            _buildGroupOption('Без группы', null, textColor),
+                            ...taskProvider.groups.map((g) => _buildGroupOption(g['name'], g['id'], textColor)),
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -295,12 +317,38 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     final tagColor = Color(int.parse(tag['color_hex'].replaceFirst('#', '0xFF')));
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: FilterChip(
-        label: Text(tag['name'], style: TextStyle(fontSize: 12, color: isSelected ? Colors.white : textColor)),
-        selected: isSelected,
-        onSelected: (selected) => setState(() => selected ? _selectedTagIds.add(tag['id']) : _selectedTagIds.remove(tag['id'])),
-        backgroundColor: Colors.transparent, selectedColor: tagColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: tagColor)),
+      child: GestureDetector(
+        onLongPress: () => _showDeleteTagDialog(context, tag['id'], tag['name']), // Для Android
+        onSecondaryTap: () => _showDeleteTagDialog(context, tag['id'], tag['name']), // Для Windows
+        child: FilterChip(
+          label: Text(tag['name'], style: TextStyle(fontSize: 12, color: isSelected ? Colors.white : textColor)),
+          selected: isSelected,
+          onSelected: (selected) => setState(() => selected ? _selectedTagIds.add(tag['id']) : _selectedTagIds.remove(tag['id'])),
+          backgroundColor: Colors.transparent, selectedColor: tagColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: tagColor)),
+        ),
+      ),
+    );
+  }
+
+  // диалог для удаления тега
+  void _showDeleteTagDialog(BuildContext context, String tagId, String tagName) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Удалить тег "$tagName"?'),
+        content: const Text('Тег будет удален из всех заметок.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
+          TextButton(
+            onPressed: () {
+              context.read<TaskProvider>().deleteTag(tagId);
+              setState(() => _selectedTagIds.remove(tagId)); // Убираем из выбранных
+              Navigator.pop(context);
+            }, 
+            child: const Text('Удалить', style: TextStyle(color: Colors.red))
+          ),
+        ],
       ),
     );
   }
@@ -332,7 +380,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: controller, decoration: const InputDecoration(hintText: 'Например: Срочно')),
+              TextField(controller: controller, maxLength: 20, decoration: const InputDecoration(hintText: 'Например: Срочно', counterText: '',)),
               const SizedBox(height: 16),
               Wrap(
                 spacing: 8,
@@ -345,7 +393,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
-            TextButton(onPressed: () { if (controller.text.isNotEmpty) provider.addTag(controller.text, selectedColor); Navigator.pop(context); }, child: const Text('Создать')),
+            TextButton(onPressed: () { final text = controller.text.trim();
+              if (text.isNotEmpty) {
+                provider.addTag(text, selectedColor); 
+                Navigator.pop(context); 
+              } }, child: const Text('Создать')),
           ],
         ),
       ),

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import '../../data/local/database_helper.dart';
+import '../../data/database_helper.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 
 class TaskProvider extends ChangeNotifier {
   // === ПЕРЕМЕННЫЕ СОСТОЯНИЯ ===
@@ -156,6 +158,7 @@ class TaskProvider extends ChangeNotifier {
       'title': title,
       'content': content,
       'group_id': groupId,
+      'created_at': DateTime.now().toIso8601String(), // Поднимаем наверх при смене группы или редактировании
     }, where: 'id = ?', whereArgs: [id]);
     
     await db.delete('task_tags', where: 'task_id = ?', whereArgs: [id]);
@@ -167,7 +170,10 @@ class TaskProvider extends ChangeNotifier {
 
   Future<void> toggleComplete(String id, int currentStatus) async {
     final db = await DatabaseHelper.instance.database;
-    await db.update('tasks', {'is_completed': currentStatus == 1 ? 0 : 1}, where: 'id = ?', whereArgs: [id]);
+    await db.update('tasks', {
+      'is_completed': currentStatus == 1 ? 0 : 1,
+      'created_at': DateTime.now().toIso8601String(), // Обновляем время
+    }, where: 'id = ?', whereArgs: [id]);
     await refreshData();
   }
 
@@ -185,7 +191,10 @@ class TaskProvider extends ChangeNotifier {
 
   Future<void> restoreTask(String id) async {
     final db = await DatabaseHelper.instance.database;
-    await db.update('tasks', {'is_deleted': 0}, where: 'id = ?', whereArgs: [id]);
+    await db.update('tasks', {
+      'is_deleted': 0,
+      'created_at': DateTime.now().toIso8601String(), // Чтобы восстановленная задача была сверху
+    }, where: 'id = ?', whereArgs: [id]);
     await refreshData();
   }
 
@@ -221,15 +230,23 @@ class TaskProvider extends ChangeNotifier {
     await refreshData();
   }
 
+  Future<void> deleteTag(String id) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.delete('tags', where: 'id = ?', whereArgs: [id]);
+    await refreshData();
+  }
+
   Future<void> fullReset() async {
     await DatabaseHelper.instance.clearDatabase();
     await refreshData(); 
   }
 
   Future<String?> exportData() async {
-    try {
-      final jsonString = await DatabaseHelper.instance.exportToJson();
-      
+  try {
+    final jsonString = await DatabaseHelper.instance.exportToJson();
+
+    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+      // Для десктопа оставляем старый добрый диалог сохранения
       String? outputFile = await FilePicker.platform.saveFile(
         dialogTitle: 'Сохранить резервную копию',
         fileName: 'novastep_backup.json',
@@ -242,11 +259,27 @@ class TaskProvider extends ChangeNotifier {
         await file.writeAsString(jsonString);
         return 'Данные успешно экспортированы!';
       }
-      return null; 
-    } catch (e) {
-      return 'Ошибка экспорта: $e';
+    } else {
+      // Для мобилок используем "Поделиться", это 100% обходит проблемы с правами
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/novastep_backup.json');
+      await file.writeAsString(jsonString);
+      
+      final xFile = XFile(file.path);
+      // Используем актуальный синтаксис share_plus:
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [xFile],
+          text: 'Резервная копия NovaStep',
+        ),
+      );
+      return 'Меню экспорта открыто';
     }
+    return null;
+  } catch (e) {
+    return 'Ошибка экспорта: $e';
   }
+}
 
   Future<String?> importData() async {
     try {
