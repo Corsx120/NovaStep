@@ -14,13 +14,10 @@ import 'logic/services/notification_service.dart'; // Подключили се�
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Инициализация локальных уведомлений (Только для Android)
-  if (Platform.isAndroid) {
-    try {
-      await NotificationService.init();
-    } catch (e) {
-      debugPrint('Ошибка инициализации уведомлений: $e');
-    }
+  try {
+    await NotificationService.init();
+  } catch (e) {
+    debugPrint('Ошибка инициализации уведомлений: $e');
   }
 
   // Инициализация базы данных и размеров окна для ПК

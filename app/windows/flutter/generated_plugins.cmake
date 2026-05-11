@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  local_notifier
   screen_retriever
   share_plus
   speech_to_text_windows
